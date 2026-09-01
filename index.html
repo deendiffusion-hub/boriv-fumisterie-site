@@ -1255,11 +1255,12 @@
               <span>Total estimé</span>
               <b id="booking-recap-total-value"></b>
             </div>
-            <button type="submit" class="btn btn-primary">
-              Envoyer ma demande de rendez-vous
+            <button type="submit" class="btn btn-primary" id="booking-submit-btn">
+              <span class="btn-label">Envoyer ma demande de rendez-vous</span>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
             </button>
             <p class="booking-legal">En envoyant ce formulaire, vous acceptez d'être recontacté(e) par Boriv Fumisterie pour organiser votre rendez-vous. Aucune donnée n'est transmise à des tiers.</p>
+            <p id="booking-error" role="alert" style="display:none;margin-top:.75rem;color:#b42318;font-size:.9rem;">Une erreur est survenue lors de l'envoi. Vérifiez votre connexion et réessayez, ou appelez-nous directement au 06 62 27 81 20.</p>
           </div>
 
           <!-- ÉTAT DE SUCCÈS -->
@@ -1432,10 +1433,9 @@
   }
 
   // ----- Formulaire de prise de rendez-vous (multi-étapes) -----
-  // NOTE : aucun backend n'est branché ici. À connecter à un service
-  // d'envoi (ex. e-mail via un formulaire tiers, webhook, ou CRM du client)
-  // avant mise en ligne, pour que les demandes soient réellement reçues.
+  // Les demandes sont envoyées par e-mail via Formspree (endpoint ci-dessous).
   (function(){
+    var FORMSPREE_ENDPOINT = 'https://formspree.io/f/mdeogkzb';
     var bookingForm = document.getElementById('booking-form');
     if(!bookingForm) return;
 
@@ -1802,10 +1802,59 @@
       }
     }
 
-    // ----- Envoi final (fake-submit, cf. note en haut de ce bloc) -----
+    // ----- Envoi final : envoi réel de la demande par e-mail via Formspree -----
+    var submitBtn = document.getElementById('booking-submit-btn');
+    var submitBtnLabel = submitBtn ? submitBtn.querySelector('.btn-label') : null;
+    var errorEl = document.getElementById('booking-error');
+
     bookingForm.addEventListener('submit', function(e){
       e.preventDefault();
-      showStep('success');
+      if(errorEl) errorEl.style.display = 'none';
+
+      var basePrice = (selections.prestation === 'ramonage' && selections.profil === 'particulier')
+        ? RAMONAGE_PRICES[selections.foyer] : undefined;
+      var creneauText = CRENEAU_LABELS[selections.creneau] || selections.creneau;
+      if(selections.creneau === 'date-precise' && selections.date){
+        creneauText += ' (' + selections.date + ')';
+      }
+
+      var payload = {
+        _subject: 'Nouvelle demande de devis — Boriv Fumisterie',
+        'Prestation': PRESTATION_LABELS[selections.prestation] || selections.prestation || '—',
+        'Type de foyer': selections.prestation === 'ramonage' ? (FOYER_LABELS[selections.foyer] || '—') : undefined,
+        'Besoin': selections.prestation !== 'ramonage' ? (BESOIN_LABELS[selections.besoin] || '—') : undefined,
+        'Prix de la prestation': basePrice !== undefined ? (basePrice + ' €') : undefined,
+        'Profil': PROFIL_LABELS[selections.profil] || selections.profil || '—',
+        'Nom': selections.nom,
+        'Téléphone': selections.telephone,
+        'email': selections.email,
+        'Adresse': adresseComplete(),
+        'Déplacement estimé': selections.deplacement ? selections.deplacement.label : undefined,
+        'Créneau souhaité': creneauText,
+        'Message': selections.message || undefined
+      };
+      // Nettoyage des champs vides pour un e-mail plus lisible
+      Object.keys(payload).forEach(function(k){ if(payload[k] === undefined) delete payload[k]; });
+
+      if(submitBtn){ submitBtn.disabled = true; }
+      if(submitBtnLabel){ submitBtnLabel.textContent = 'Envoi en cours...'; }
+
+      fetch(FORMSPREE_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).then(function(res){
+        if(res.ok){
+          showStep('success');
+        } else {
+          throw new Error('Formspree error');
+        }
+      }).catch(function(){
+        if(errorEl) errorEl.style.display = 'block';
+      }).finally(function(){
+        if(submitBtn){ submitBtn.disabled = false; }
+        if(submitBtnLabel){ submitBtnLabel.textContent = 'Envoyer ma demande de rendez-vous'; }
+      });
     });
 
     showStep(1);
