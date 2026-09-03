@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /mentions-legales.html
+Disallow: /confidentialite.html
+Disallow: /cgv-cgu.html
+
+Sitemap: https://www.boriv-ramonage.fr/sitemap.xml
